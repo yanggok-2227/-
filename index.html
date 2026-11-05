@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>에빙하우스 망각곡선 AI 영단어장</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;600;700&display=swap');
+    body { font-family: 'Pretendard', sans-serif; }
+    .card-flip { perspective: 1000px; }
+    .card-inner { transition: transform 0.6s; transform-style: preserve-3d; }
+    .card-inner.flipped { transform: rotateY(180deg); }
+    .card-front, .card-back { backface-visibility: hidden; }
+    .card-back { transform: rotateY(180deg); }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+
+  <!-- 상단 네비게이션 바 -->
+  <header class="bg-indigo-600 text-white shadow-md">
+    <div class="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center">
+      <div class="flex items-center space-x-2">
+        <i class="fa-solid fa-brain text-2xl text-amber-300"></i>
+        <h1 class="text-xl font-bold tracking-tight">에빙하우스 AI 영단어장</h1>
+      </div>
+      <button id="btn-settings-toggle" onclick="toggleSettingsModal()" class="text-xs bg-indigo-700 hover:bg-indigo-800 px-3 py-1.5 rounded-lg transition">
+        <i class="fa-solid fa-gear mr-1"></i> API 설정
+      </button>
+    </div>
+  </header>
+
+  <main class="max-w-4xl mx-auto px-4 py-6 flex-1 w-full">
+
+    <!-- API URL 미설정 경고 바너 -->
+    <div id="api-warning" class="hidden mb-6 bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-lg shadow-sm">
+      <div class="flex">
+        <div class="flex-shrink-0">
+          <i class="fa-solid fa-triangle-exclamation text-amber-500 text-lg"></i>
+        </div>
+        <div class="ml-3">
+          <p class="text-sm text-amber-700 font-medium">
+            GAS 웹 앱 API URL이 설정되지 않았습니다. [API 설정] 버튼을 눌러 URL을 등록해 주세요.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 탭 메뉴 -->
+    <div class="flex border-b border-slate-200 mb-6 space-x-2">
+      <button id="tab-quiz-btn" onclick="switchTab('quiz')" class="px-4 py-2 font-semibold text-indigo-600 border-b-2 border-indigo-600 focus:outline-none">
+        <i class="fa-solid fa-square-check mr-1.5"></i>복습 퀴즈 <span id="quiz-badge" class="ml-1 bg-red-500 text-white text-xs px-2 py-0.5 rounded-full hidden">0</span>
+      </button>
+      <button id="tab-add-btn" onclick="switchTab('add')" class="px-4 py-2 font-semibold text-slate-500 border-b-2 border-transparent hover:text-indigo-600 focus:outline-none">
+        <i class="fa-solid fa-plus mr-1.5"></i>단어 추가
+      </button>
+      <button id="tab-list-btn" onclick="switchTab('list')" class="px-4 py-2 font-semibold text-slate-500 border-b-2 border-transparent hover:text-indigo-600 focus:outline-none">
+        <i class="fa-solid fa-list-ul mr-1.5"></i>전체 단어장 (<span id="total-count">0</span>)
+      </button>
+    </div>
+
+    <!-- SECTION 1: 복습 퀴즈 -->
+    <section id="tab-quiz" class="space-y-6">
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 text-center">
+        <h2 class="text-lg font-bold text-slate-800 mb-1">🧠 망각곡선 주기별 맞춤 복습</h2>
+        <p class="text-sm text-slate-500">카드를 뒤집으면 AI 예문 및 유의어를 함께 확인할 수 있습니다.</p>
+      </div>
+
+      <!-- 퀴즈 진행 영역 -->
+      <div id="quiz-container" class="hidden">
+        <div class="card-flip w-full max-w-lg mx-auto h-96 cursor-pointer" onclick="flipCard()">
+          <div id="flashcard" class="card-inner relative w-full h-full text-center shadow-lg rounded-2xl bg-white border border-slate-200">
+            
+            <!-- 앞면: 영어 단어 -->
+            <div class="card-front absolute inset-0 flex flex-col justify-center items-center p-6 rounded-2xl bg-indigo-50 border-2 border-indigo-200">
+              <span id="quiz-stage-badge" class="absolute top-4 left-4 bg-indigo-100 text-indigo-700 text-xs font-bold px-2.5 py-1 rounded-full">1단계</span>
+              <p class="text-xs text-slate-400 mb-2">카드를 클릭하여 뜻과 AI 예문을 확인하세요</p>
+              <h3 id="quiz-word" class="text-4xl font-extrabold text-indigo-900 tracking-wide">Word</h3>
+            </div>
+            
+            <!-- 뒷면: 한글 뜻 + AI 예문 & 유의어 -->
+            <div class="card-back absolute inset-0 flex flex-col justify-between p-6 rounded-2xl bg-amber-50/90 border-2 border-amber-200 text-left overflow-y-auto">
+              <div>
+                <span class="text-xs text-amber-700 font-bold uppercase tracking-wider">Meaning</span>
+                <h3 id="quiz-meaning" class="text-2xl font-bold text-slate-800 mb-4">단어 뜻</h3>
+                
+                <!-- AI 예문 -->
+                <div id="quiz-example-box" class="bg-white/80 p-3.5 rounded-xl border border-amber-200 mb-3 space-y-1">
+                  <span class="text-[11px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md inline-block">✨ AI 예문</span>
+                  <p id="quiz-example" class="text-sm font-medium text-slate-700 italic">Example sentence goes here...</p>
+                  <p id="quiz-example-meaning" class="text-xs text-slate-500">예문 뜻 해석...</p>
+                </div>
+
+                <!-- AI 유의어 -->
+                <div id="quiz-synonyms-box" class="space-y-1">
+                  <span class="text-[11px] font-semibold text-slate-500">🏷️ 유의어:</span>
+                  <p id="quiz-synonyms" class="text-xs font-semibold text-indigo-700 bg-white/60 px-2.5 py-1 rounded-lg inline-block border border-amber-100">-</p>
+                </div>
+              </div>
+              
+              <p class="text-[11px] text-slate-400 text-center mt-2">터치시 앞면으로 돌아갑니다</p>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- 정답 / 오답 선택 버튼 -->
+        <div id="quiz-actions" class="mt-6 flex justify-center space-x-4 max-w-lg mx-auto">
+          <button onclick="submitResult(false)" class="flex-1 bg-rose-500 hover:bg-rose-600 text-white font-bold py-3 px-4 rounded-xl shadow-md transition flex items-center justify-center space-x-2">
+            <i class="fa-solid fa-xmark text-lg"></i>
+            <span>기억 안 남 (1단계 리셋)</span>
+          </button>
+          <button onclick="submitResult(true)" class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 px-4 rounded-xl shadow-md transition flex items-center justify-center space-x-2">
+            <i class="fa-solid fa-check text-lg"></i>
+            <span>기억남 (단계 상승)</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 복습할 단어 없음 메세지 -->
+      <div id="no-quiz" class="hidden text-center py-12 bg-white rounded-2xl border border-slate-100 shadow-sm">
+        <i class="fa-solid fa-circle-check text-5xl text-emerald-400 mb-3"></i>
+        <h3 class="text-xl font-bold text-slate-700">모든 복습을 마쳤습니다!</h3>
+        <p class="text-sm text-slate-400 mt-1">망각곡선 주기에 따라 다음 복습 시간에 새로운 단어가 찾아옵니다.</p>
+      </div>
+    </section>
+
+    <!-- SECTION 2: 단어 추가 (AI 기능 추가) -->
+    <section id="tab-add" class="hidden">
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 max-w-lg mx-auto">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-lg font-bold text-slate-800 flex items-center">
+            <i class="fa-solid fa-plus-circle text-indigo-600 mr-2"></i> 새 단어 등록하기
+          </h2>
+          <button type="button" onclick="generateAIContent()" class="text-xs bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-semibold px-3 py-1.5 rounded-lg shadow-sm transition flex items-center space-x-1">
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
+            <span>AI 예문/유의어 자동생성</span>
+          </button>
+        </div>
+
+        <form id="add-word-form" onsubmit="handleAddWord(event)" class="space-y-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">영어 단어 (English)</label>
+            <input type="text" id="input-word" required placeholder="예: memorize" class="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">한글 뜻 (Meaning)</label>
+            <input type="text" id="input-meaning" required placeholder="예: 암기하다, 기억하다" class="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+          </div>
+
+          <!-- AI 자동 생성 필드 -->
+          <div class="pt-2 border-t border-slate-100 space-y-3">
+            <span class="text-xs font-bold text-indigo-600 flex items-center">
+              <i class="fa-solid fa-robot mr-1.5"></i> AI 추가 정보 (선택 사항)
+            </span>
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-500 mb-1">영어 예문 (Example)</label>
+              <input type="text" id="input-example" placeholder="AI 자동 생성 버튼을 누르면 채워집니다" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+            </div>
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-500 mb-1">예문 한글 뜻</label>
+              <input type="text" id="input-example-meaning" placeholder="AI 자동 생성 버튼을 누르면 채워집니다" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+            </div>
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-500 mb-1">유의어 (Synonyms)</label>
+              <input type="text" id="input-synonyms" placeholder="예: remember, retain" class="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+            </div>
+          </div>
+
+          <button type="submit" id="btn-add-submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow transition mt-2">
+            단어 등록하기 (1단계 등록)
+          </button>
+        </form>
+      </div>
+    </section>
+
+    <!-- SECTION 3: 전체 단어장 목록 -->
+    <section id="tab-list" class="hidden space-y-4">
+      <div class="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-100">
+        <div class="text-sm font-semibold text-slate-600">
+          전체 단어 상태 관리
+        </div>
+        <button onclick="loadWords()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-lg transition">
+          <i class="fa-solid fa-rotate-right mr-1"></i> 새로고침
+        </button>
+      </div>
+
+      <!-- 단어 목록 테이블/카드 -->
+      <div id="word-list-container" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- JS로 동적 생성됨 -->
+      </div>
+    </section>
+
+  </main>
+
+  <!-- API 설정 모달 (Modal) -->
+  <div id="settings-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden flex items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl">
+      <h3 class="text-lg font-bold text-slate-800 mb-2">⚙️ GAS 백엔드 Web App URL 설정</h3>
+      <p class="text-xs text-slate-500 mb-4">1단계에서 배포한 구글 앱스 스크립트의 Web App URL을 입력해 주세요.</p>
+      
+      <input type="url" id="input-api-url" placeholder="https://script.google.com/macros/s/.../exec" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm mb-4 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+      
+      <div class="flex justify-end space-x-2">
+        <button onclick="toggleSettingsModal()" class="px-4 py-2 text-sm text-slate-500 hover:bg-slate-100 rounded-lg">취소</button>
+        <button onclick="saveApiUrl()" class="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg">저장하기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 단어 삭제 확인 모달 -->
+  <div id="delete-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden flex items-center justify-center p-4 z-50">
+    <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl text-center">
+      <i class="fa-solid fa-trash-can text-3xl text-rose-500 mb-3"></i>
+      <h3 class="text-lg font-bold text-slate-800 mb-1">단어 삭제</h3>
+      <p class="text-xs text-slate-500 mb-6">정말로 이 단어를 삭제하시겠습니까?</p>
+      
+      <div class="flex justify-center space-x-3">
+        <button onclick="closeDeleteModal()" class="flex-1 py-2 text-sm bg-slate-100 text-slate-600 hover:bg-slate-200 font-semibold rounded-xl">취소</button>
+        <button id="btn-confirm-delete" class="flex-1 py-2 text-sm bg-rose-600 text-white hover:bg-rose-700 font-bold rounded-xl">삭제</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 토스트 알림 메세지 -->
+  <div id="toast-container" class="fixed bottom-5 right-5 z-50 space-y-2 pointer-events-none"></div>
+
+  <!-- 로딩 오버레이 -->
+  <div id="loading-spinner" class="fixed inset-0 bg-white/70 backdrop-blur-xs hidden flex flex-col items-center justify-center z-40">
+    <div class="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-3"></div>
+    <p id="loading-text" class="text-sm font-semibold text-indigo-900">데이터 처리 중...</p>
+  </div>
+
+  <!-- JavaScript 애플리케이션 로직 -->
+  <script>
+    // =========================================================================
+    // ⚠️ [URL 입력 위치] 1단계에서 배포한 구글 앱스 스크립트(GAS) Web App URL을
+    // 아래 큰따옴표("") 안에 직접 붙여넣어 보관하실 수 있습니다.
+    // =========================================================================
+    const DEFAULT_API_URL = ""; 
+
+    // 전역 상태 관리
+    let apiUrl = localStorage.getItem('ebbinghaus_api_url') || DEFAULT_API_URL;
+    let wordList = [];
+    let currentQuizQueue = [];
+    let currentQuizIndex = 0;
+    let pendingDeleteId = null;
+
+    // 커스텀 토스트 메시지 함수
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      
+      let bgColor = 'bg-slate-800';
+      let icon = 'fa-circle-info';
+      if (type === 'success') { bgColor = 'bg-emerald-600'; icon = 'fa-circle-check'; }
+      if (type === 'error') { bgColor = 'bg-rose-600'; icon = 'fa-circle-exclamation'; }
+
+      toast.className = `${bgColor} text-white text-xs px-4 py-3 rounded-xl shadow-lg flex items-center space-x-2 transition-all transform translate-y-2 opacity-0 pointer-events-auto`;
+      toast.innerHTML = `<i class="fa-solid ${icon}"></i><span>${message}</span>`;
+      
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.classList.remove('translate-y-2', 'opacity-0');
+      }, 10);
+
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    }
+
+    // 초기화 함수
+    window.addEventListener('DOMContentLoaded', () => {
+      if (apiUrl) {
+        document.getElementById('input-api-url').value = apiUrl;
+        loadWords();
+      } else {
+        document.getElementById('api-warning').classList.remove('hidden');
+        toggleSettingsModal();
+      }
+    });
+
+    // API URL 저장
+    function saveApiUrl() {
+      const url = document.getElementById('input-api-url').value.trim();
+      if (!url) {
+        showToast('올바른 URL을 입력해주세요.', 'error');
+        return;
+      }
+      apiUrl = url;
+      localStorage.setItem('ebbinghaus_api_url', apiUrl);
+      document.getElementById('api-warning').classList.add('hidden');
+      toggleSettingsModal();
+      showToast('API URL이 성공적으로 저장되었습니다.', 'success');
+      loadWords();
+    }
+
+    function toggleSettingsModal() {
+      const modal = document.getElementById('settings-modal');
+      modal.classList.toggle('hidden');
+    }
+
+    // 탭 전환 로직
+    function switchTab(tabName) {
+      ['quiz', 'add', 'list'].forEach(t => {
+        document.getElementById(`tab-${t}`).classList.add('hidden');
+        document.getElementById(`tab-${t}-btn`).classList.remove('text-indigo-600', 'border-indigo-600');
+        document.getElementById(`tab-${t}-btn`).classList.add('text-slate-500', 'border-transparent');
+      });
+
+      document.getElementById(`tab-${tabName}`).classList.remove('hidden');
+      document.getElementById(`tab-${tabName}-btn`).classList.add('text-indigo-600', 'border-indigo-600');
+      document.getElementById(`tab-${tabName}-btn`).classList.remove('text-slate-500', 'border-transparent');
+
+      if (tabName === 'quiz') setupQuizQueue();
+      if (tabName === 'list') renderWordList();
+    }
+
+    // 로딩 토글
+    function showLoading(show, message = '데이터 처리 중...') {
+      const spinner = document.getElementById('loading-spinner');
+      const text = document.getElementById('loading-text');
+      text.innerText = message;
+      if (show) spinner.classList.remove('hidden');
+      else spinner.classList.add('hidden');
+    }
+
+    // =========================================================================
+    // 🤖 Gemini API 연동 (gemini-3-flash-preview) - 예문 및 유의어 생성
+    // =========================================================================
+    async function generateAIContent() {
+      const word = document.getElementById('input-word').value.trim();
+      const meaning = document.getElementById('input-meaning').value.trim();
+
+      if (!word) {
+        showToast('먼저 영어 단어를 입력해 주세요.', 'error');
+        return;
+      }
+
+      showLoading(true, '🤖 Gemini AI가 예문과 유의어를 생성하는 중...');
+
+      try {
+        const apiKey = ""; // Canvas 환경에서 자동 처리됨
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+
+        const prompt = `Act as an expert English language teacher. For the English word "${word}" (Korean meaning: "${meaning || '자동 추론'}"), generate a helpful example sentence with its Korean translation, and 2-3 synonyms.`;
+
+        const payload = {
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: "OBJECT",
+              properties: {
+                example: { type: "STRING", description: "A natural English sentence using the target word" },
+                exampleMeaning: { type: "STRING", description: "Korean translation of the example sentence" },
+                synonyms: { type: "STRING", description: "2 to 3 synonyms separated by commas" }
+              },
+              propertyOrdering: ["example", "exampleMeaning", "synonyms"]
+            }
+          }
+        };
+
+        const response = await fetch(geminiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const result = await response.json();
+        const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+        if (jsonText) {
+          const data = JSON.parse(jsonText);
+          if (data.example) document.getElementById('input-example').value = data.example;
+          if (data.exampleMeaning) document.getElementById('input-example-meaning').value = data.exampleMeaning;
+          if (data.synonyms) document.getElementById('input-synonyms').value = data.synonyms;
+
+          showToast('✨ AI 예문 및 유의어가 성공적으로 생성되었습니다!', 'success');
+        } else {
+          showToast('AI 응답을 생성하지 못했습니다. 다시 시도해 주세요.', 'error');
+        }
+
+      } catch (err) {
+        console.error(err);
+        showToast('AI 연동 처리 중 오류가 발생했습니다.', 'error');
+      } finally {
+        showLoading(false);
+      }
+    }
+
+    // 1. 단어 목록 전체 가져오기 (GET)
+    async function loadWords() {
+      if (!apiUrl) return;
+      showLoading(true);
+
+      try {
+        const response = await fetch(apiUrl);
+        const result = await response.json();
+
+        if (result.status === 'success') {
+          wordList = result.data || [];
+          document.getElementById('total-count').innerText = wordList.length;
+          setupQuizQueue();
+          renderWordList();
+        } else {
+          showToast('데이터 로드 실패: ' + result.message, 'error');
+        }
+      } catch (err) {
+        console.error(err);
+        showToast('백엔드 통신 오류가 발생했습니다. URL을 확인해 주세요.', 'error');
+      } finally {
+        showLoading(false);
+      }
+    }
+
+    // 2. 단어 추가 처리 (POST) - 예문 & 유의어 함께 전송
+    async function handleAddWord(e) {
+      e.preventDefault();
+      if (!apiUrl) {
+        showToast('API URL을 먼저 설정해 주세요.', 'error');
+        return;
+      }
+
+      const wordInput = document.getElementById('input-word');
+      const meaningInput = document.getElementById('input-meaning');
+      const exampleInput = document.getElementById('input-example');
+      const exampleMeaningInput = document.getElementById('input-example-meaning');
+      const synonymsInput = document.getElementById('input-synonyms');
+
+      const payload = {
+        action: 'addWord',
+        word: wordInput.value.trim(),
+        meaning: meaningInput.value.trim(),
+        example: exampleInput.value.trim(),
+        exampleMeaning: exampleMeaningInput.value.trim(),
+        synonyms: synonymsInput.value.trim()
+      };
+
+      showLoading(true, '구글 시트 DB에 저장 중...');
+
+      try {
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+        const result = await response.json();
+
+        if (result.status === 'success') {
+          wordInput.value = '';
+          meaningInput.value = '';
+          exampleInput.value = '';
+          exampleMeaningInput.value = '';
+          synonymsInput.value = '';
+
+          showToast('단어가 등록되었습니다! (1단계/10분 후 복습)', 'success');
+          await loadWords();
+          switchTab('quiz');
+        } else {
+          showToast('등록 실패: ' + result.message, 'error');
+        }
+      } catch (err) {
+        showToast('오류 발생: ' + err.toString(), 'error');
+      } finally {
+        showLoading(false);
+      }
+    }
+
+    // 3. 에빙하우스 복습 퀴즈 세팅
+    function setupQuizQueue() {
+      const now = new Date();
+      
+      // 복습 시간이 되었거나 지난 단어 필터링 (stage 6 완벽 암기는 제외)
+      currentQuizQueue = wordList.filter(item => {
+        if (item.stage >= 6) return false;
+        const reviewTime = new Date(item.nextReview);
+        return reviewTime <= now;
+      });
+
+      const badge = document.getElementById('quiz-badge');
+      if (currentQuizQueue.length > 0) {
+        badge.innerText = currentQuizQueue.length;
+        badge.classList.remove('hidden');
+      } else {
+        badge.classList.add('hidden');
+      }
+
+      currentQuizIndex = 0;
+      renderCurrentQuiz();
+    }
+
+    function renderCurrentQuiz() {
+      const quizContainer = document.getElementById('quiz-container');
+      const noQuiz = document.getElementById('no-quiz');
+
+      if (currentQuizQueue.length === 0 || currentQuizIndex >= currentQuizQueue.length) {
+        quizContainer.classList.add('hidden');
+        noQuiz.classList.remove('hidden');
+        return;
+      }
+
+      noQuiz.classList.add('hidden');
+      quizContainer.classList.remove('hidden');
+
+      // 플래시카드 상태 초기화
+      document.getElementById('flashcard').classList.remove('flipped');
+
+      const currentItem = currentQuizQueue[currentQuizIndex];
+      document.getElementById('quiz-word').innerText = currentItem.word;
+      document.getElementById('quiz-meaning').innerText = currentItem.meaning;
+      document.getElementById('quiz-stage-badge').innerText = `${currentItem.stage}단계 복습`;
+
+      // AI 예문 & 유의어 바인딩
+      const exBox = document.getElementById('quiz-example-box');
+      if (currentItem.example) {
+        exBox.classList.remove('hidden');
+        document.getElementById('quiz-example').innerText = `"${currentItem.example}"`;
+        document.getElementById('quiz-example-meaning').innerText = currentItem.exampleMeaning || '';
+      } else {
+        exBox.classList.add('hidden');
+      }
+
+      const synBox = document.getElementById('quiz-synonyms-box');
+      if (currentItem.synonyms) {
+        synBox.classList.remove('hidden');
+        document.getElementById('quiz-synonyms').innerText = currentItem.synonyms;
+      } else {
+        synBox.classList.add('hidden');
+      }
+    }
+
+    function flipCard() {
+      document.getElementById('flashcard').classList.toggle('flipped');
+    }
+
+    // 4. 퀴즈 결과 제출 (POST)
+    async function submitResult(isCorrect) {
+      if (currentQuizIndex >= currentQuizQueue.length) return;
+      
+      const currentItem = currentQuizQueue[currentQuizIndex];
+      showLoading(true);
+
+      try {
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          body: JSON.stringify({
+            action: 'updateResult',
+            id: currentItem.id,
+            isCorrect: isCorrect
+          })
+        });
+
+        const result = await response.json();
+
+        if (result.status === 'success') {
+          currentQuizIndex++;
+          showToast(isCorrect ? '기억 성공! 단계가 상승했습니다.' : '1단계로 리셋되었습니다.', isCorrect ? 'success' : 'info');
+          await loadWords();
+        } else {
+          showToast('결과 반영 실패: ' + result.message, 'error');
+        }
+      } catch (err) {
+        showToast('오류 발생: ' + err.toString(), 'error');
+      } finally {
+        showLoading(false);
+      }
+    }
+
+    // 5. 단어 삭제 모달 로직
+    function requestDeleteWord(id) {
+      pendingDeleteId = id;
+      document.getElementById('btn-confirm-delete').onclick = () => executeDeleteWord();
+      document.getElementById('delete-modal').classList.remove('hidden');
+    }
+
+    function closeDeleteModal() {
+      pendingDeleteId = null;
+      document.getElementById('delete-modal').classList.add('hidden');
+    }
+
+    async function executeDeleteWord() {
+      if (!pendingDeleteId) return;
+      const targetId = pendingDeleteId;
+      closeDeleteModal();
+      showLoading(true);
+
+      try {
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          body: JSON.stringify({
+            action: 'deleteWord',
+            id: targetId
+          })
+        });
+
+        const result = await response.json();
+        if (result.status === 'success') {
+          showToast('단어가 삭제되었습니다.', 'success');
+          await loadWords();
+        } else {
+          showToast('삭제 실패: ' + result.message, 'error');
+        }
+      } catch (err) {
+        showToast('오류 발생: ' + err.toString(), 'error');
+      } finally {
+        showLoading(false);
+      }
+    }
+
+    // 6. 전체 단어장 목록 렌더링 (AI 정보 포함)
+    function renderWordList() {
+      const container = document.getElementById('word-list-container');
+      container.innerHTML = '';
+
+      if (wordList.length === 0) {
+        container.innerHTML = `<div class="col-span-2 text-center py-8 text-slate-400">등록된 단어가 없습니다. [단어 추가] 탭에서 등록해 보세요!</div>`;
+        return;
+      }
+
+      const now = new Date();
+
+      wordList.forEach(item => {
+        const nextReviewDate = new Date(item.nextReview);
+        const isDue = nextReviewDate <= now && item.stage < 6;
+        
+        let stageBadge = `<span class="bg-indigo-100 text-indigo-700 text-xs px-2 py-0.5 rounded-full font-bold">${item.stage}단계</span>`;
+        if (item.stage >= 6) {
+          stageBadge = `<span class="bg-emerald-100 text-emerald-700 text-xs px-2 py-0.5 rounded-full font-bold">암기 완료</span>`;
+        }
+
+        let timeRemainingStr = '';
+        if (item.stage >= 6) {
+          timeRemainingStr = '복습 완료';
+        } else if (isDue) {
+          timeRemainingStr = '🔥 지금 복습 필요!';
+        } else {
+          const diffMin = Math.round((nextReviewDate - now) / (1000 * 60));
+          if (diffMin < 60) {
+            timeRemainingStr = `${diffMin}분 후 복습`;
+          } else {
+            const diffHour = Math.round(diffMin / 60);
+            timeRemainingStr = `${diffHour}시간 후 복습`;
+          }
+        }
+
+        const exampleHtml = item.example ? `
+          <div class="mt-2 text-xs bg-slate-50 p-2 rounded-lg border border-slate-100">
+            <p class="font-medium text-slate-700 italic">"${escapeHtml(item.example)}"</p>
+            <p class="text-slate-400 text-[11px]">${escapeHtml(item.exampleMeaning || '')}</p>
+          </div>
+        ` : '';
+
+        const synonymsHtml = item.synonyms ? `
+          <span class="text-[11px] font-medium text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded ml-2">
+            🏷️ ${escapeHtml(item.synonyms)}
+          </span>
+        ` : '';
+
+        const cardHtml = `
+          <div class="bg-white p-4 rounded-xl shadow-xs border border-slate-200 flex flex-col justify-between">
+            <div>
+              <div class="flex justify-between items-start mb-1">
+                <div class="flex items-center space-x-2">
+                  <h4 class="font-bold text-slate-800 text-lg">${escapeHtml(item.word)}</h4>
+                  ${stageBadge}
+                </div>
+                <button onclick="requestDeleteWord('${item.id}')" class="text-slate-300 hover:text-rose-500 p-1 transition">
+                  <i class="fa-solid fa-trash-can text-base"></i>
+                </button>
+              </div>
+              <p class="text-sm font-semibold text-slate-600 mb-1">
+                ${escapeHtml(item.meaning)}
+                ${synonymsHtml}
+              </p>
+              ${exampleHtml}
+            </div>
+
+            <div class="text-xs text-slate-400 flex items-center justify-between pt-3 mt-3 border-t border-slate-100">
+              <span><i class="fa-regular fa-clock mr-1"></i>${timeRemainingStr}</span>
+              <span>정답: ${item.correctCount || 0}회 / 오답: ${item.wrongCount || 0}회</span>
+            </div>
+          </div>
+        `;
+        container.innerHTML += cardHtml;
+      });
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+  </script>
+</body>
+</html>
